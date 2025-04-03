@@ -17,9 +17,9 @@ import (
 // Host returns the scheme and host. Host can be configured via the OLLAMA_HOST environment variable.
 // Default is scheme "http" and host "127.0.0.1:11434"
 func Host() *url.URL {
-	defaultPort := "11434"
+	defaultPort := "21434"
 
-	s := strings.TrimSpace(Var("OLLAMA_HOST"))
+	s := strings.TrimSpace(Var("MACOP_HOST"))
 	scheme, hostport, ok := strings.Cut(s, "://")
 	switch {
 	case !ok:

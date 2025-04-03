@@ -26,6 +26,11 @@ import (
 	"github.com/macophub/macop/version"
 )
 
+var (
+	errRequired    = errors.New("is required")
+	errBadTemplate = errors.New("template error")
+)
+
 type Server struct {
 	addr net.Addr
 	//sched *Scheduler
@@ -101,6 +106,7 @@ func Serve(ln net.Listener) error {
 	//schedCtx, schedDone := context.WithCancel(ctx)
 	//sched := InitScheduler(schedCtx)
 	//s.sched = sched
+	ctx, done := context.WithCancel(context.Background())
 
 	slog.Info(fmt.Sprintf("Listening on %s (version %s)", ln.Addr(), version.Version))
 	srvr := &http.Server{
@@ -118,13 +124,13 @@ func Serve(ln net.Listener) error {
 	// listen for a ctrl+c and stop any loaded llm
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	//go func() {
-	//	<-signals
-	//	srvr.Close()
-	//	//schedDone()
-	//	//sched.unloadAllRunners()
-	//	//done()
-	//}()
+	go func() {
+		<-signals
+		srvr.Close()
+		//schedDone()
+		//sched.unloadAllRunners()
+		done()
+	}()
 
 	//s.sched.Run(schedCtx)
 
@@ -139,7 +145,7 @@ func Serve(ln net.Listener) error {
 	if !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	//<-ctx.Done()
+	<-ctx.Done()
 	return nil
 }
 
@@ -222,6 +228,10 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 
 	// Local model cache management (new implementation is at end of function)
 	r.POST("/api/pull", s.PullHandler)
+	r.POST("/api/push", s.PushHandler)
+	// Create
+	r.POST("/api/create", s.CreateHandler)
+
 	//
 	//if rc != nil {
 	//	// wrap old with new
@@ -236,6 +246,61 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	//}
 
 	return r, nil
+}
+
+func (s *Server) PushHandler(c *gin.Context) {
+	var req api.PushRequest
+	err := c.ShouldBindJSON(&req)
+	switch {
+	case errors.Is(err, io.EOF):
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "missing request body"})
+		return
+	case err != nil:
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var mname string
+	if req.Model != "" {
+		mname = req.Model
+	} else if req.Name != "" {
+		mname = req.Name
+	} else {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "model is required"})
+		return
+	}
+
+	ch := make(chan any)
+	go func() {
+		defer close(ch)
+		fn := func(r api.ProgressResponse) {
+			ch <- r
+		}
+
+		regOpts := &registryOptions{
+			Insecure: req.Insecure,
+		}
+
+		ctx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+
+		name, err := getExistingName(model.ParseName(mname))
+		if err != nil {
+			ch <- gin.H{"error": err.Error()}
+			return
+		}
+
+		if err := PushModel(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
+			ch <- gin.H{"error": err.Error()}
+		}
+	}()
+
+	if req.Stream != nil && !*req.Stream {
+		waitForStream(c, ch)
+		return
+	}
+
+	streamResponse(c, ch)
 }
 
 func (s *Server) PullHandler(c *gin.Context) {

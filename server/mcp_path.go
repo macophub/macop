@@ -37,7 +37,7 @@ var (
 	ErrModelPathInvalid    = errors.New("invalid model path")
 )
 
-func ParseModelPath(name string) MCPPath {
+func ParseMCPPath(name string) MCPPath {
 	mp := MCPPath{
 		ProtocolScheme: DefaultProtocolScheme,
 		Registry:       DefaultRegistry,

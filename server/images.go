@@ -254,7 +254,7 @@ func GetManifest(mp MCPPath) (*Manifest, string, error) {
 }
 
 func GetModel(name string) (*Model, error) {
-	mp := ParseModelPath(name)
+	mp := ParseMCPPath(name)
 	manifest, digest, err := GetManifest(mp)
 	if err != nil {
 		return nil, err
@@ -501,7 +501,7 @@ func PruneDirectory(path string) error {
 }
 
 func PushModel(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
-	mp := ParseModelPath(name)
+	mp := ParseMCPPath(name)
 	fn(api.ProgressResponse{Status: "retrieving manifest"})
 
 	if mp.ProtocolScheme == "http" && !regOpts.Insecure {
@@ -550,7 +550,7 @@ func PushModel(ctx context.Context, name string, regOpts *registryOptions, fn fu
 }
 
 func PullModel(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
-	mp := ParseModelPath(name)
+	mp := ParseMCPPath(name)
 
 	// build deleteMap to prune unused layers
 	deleteMap := make(map[string]struct{})

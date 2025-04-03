@@ -146,7 +146,7 @@ func TestParseModelPath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := ParseModelPath(tc.arg)
+			got := ParseMCPPath(tc.arg)
 
 			if got != tc.want {
 				t.Errorf("got: %q want: %q", got, tc.want)
