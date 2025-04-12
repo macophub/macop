@@ -290,7 +290,7 @@ func (s *Server) PushHandler(c *gin.Context) {
 			return
 		}
 
-		if err := PushModel(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
+		if err := PushMCP(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
 			ch <- gin.H{"error": err.Error()}
 		}
 	}()

@@ -53,7 +53,7 @@ func (s *Server) CreateHandler(c *gin.Context) {
 		}
 	}
 
-	name := model.ParseName(cmp.Or(r.Model, r.Name))
+	name := model.ParseName(r.Name)
 	if !name.IsValid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errtypes.InvalidModelNameErrMsg})
 		return
@@ -75,8 +75,9 @@ func (s *Server) CreateHandler(c *gin.Context) {
 		oldManifest, _ := ParseNamedManifest(name)
 
 		var baseLayers []*layerGGML
+		//
 		if r.From != "" {
-			slog.Debug("create model from model name")
+			slog.Debug("create model from mcp name")
 			fromName := model.ParseName(r.From)
 			if !fromName.IsValid() {
 				ch <- gin.H{"error": errtypes.InvalidModelNameErrMsg, "status": http.StatusBadRequest}

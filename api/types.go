@@ -297,7 +297,7 @@ type EmbeddingResponse struct {
 
 // CreateRequest is the request passed to [Client.Create].
 type CreateRequest struct {
-	Model    string `json:"model"`
+	Name     string `json:"name"`
 	Stream   *bool  `json:"stream,omitempty"`
 	Quantize string `json:"quantize,omitempty"`
 
@@ -309,9 +309,6 @@ type CreateRequest struct {
 	System     string            `json:"system,omitempty"`
 	Parameters map[string]any    `json:"parameters,omitempty"`
 	Messages   []Message         `json:"messages,omitempty"`
-
-	// Deprecated: set the model name with Model instead
-	Name string `json:"name"`
 }
 
 // DeleteRequest is the request passed to [Client.Delete].

@@ -500,7 +500,7 @@ func PruneDirectory(path string) error {
 	return nil
 }
 
-func PushModel(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
+func PushMCP(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
 	mp := ParseMCPPath(name)
 	fn(api.ProgressResponse{Status: "retrieving manifest"})
 
