@@ -1,7 +1,6 @@
 package server
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -260,40 +259,13 @@ func (s *Server) PushHandler(c *gin.Context) {
 		return
 	}
 
-	var mname string
-	if req.Model != "" {
-		mname = req.Model
-	} else if req.Name != "" {
-		mname = req.Name
-	} else {
+	if req.Model == "" {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "model is required"})
 		return
 	}
 
 	ch := make(chan any)
-	go func() {
-		defer close(ch)
-		fn := func(r api.ProgressResponse) {
-			ch <- r
-		}
-
-		regOpts := &registryOptions{
-			Insecure: req.Insecure,
-		}
-
-		ctx, cancel := context.WithCancel(c.Request.Context())
-		defer cancel()
-
-		name, err := getExistingName(model.ParseName(mname))
-		if err != nil {
-			ch <- gin.H{"error": err.Error()}
-			return
-		}
-
-		if err := PushMCP(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
-			ch <- gin.H{"error": err.Error()}
-		}
-	}()
+	go s.pushHandler(c.Request.Context(), req, ch)
 
 	if req.Stream != nil && !*req.Stream {
 		waitForStream(c, ch)
@@ -301,6 +273,35 @@ func (s *Server) PushHandler(c *gin.Context) {
 	}
 
 	streamResponse(c, ch)
+}
+
+func (s *Server) pushHandler(ctx context.Context, req api.PushRequest, ch chan any) {
+	defer close(ch)
+	mname := req.Model
+
+	fn := func(r api.ProgressResponse) {
+		ch <- r
+	}
+
+	regOpts := &registryOptions{
+		Insecure:      req.Insecure,
+		Username:      req.Username,
+		Password:      req.Password,
+		CheckRedirect: nil,
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	name, err := getExistingName(model.ParseName(mname))
+	if err != nil {
+		ch <- gin.H{"error": err.Error()}
+		return
+	}
+
+	if err := PushMCP(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
+		ch <- gin.H{"error": err.Error()}
+	}
 }
 
 func (s *Server) PullHandler(c *gin.Context) {
@@ -315,7 +316,11 @@ func (s *Server) PullHandler(c *gin.Context) {
 		return
 	}
 
-	name := model.ParseName(cmp.Or(req.Model, req.Name))
+	if req.Model == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "model is required"})
+		return
+	}
+	name := model.ParseName(req.Model)
 	if !name.IsValid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errtypes.InvalidModelNameErrMsg})
 		return
@@ -328,30 +333,33 @@ func (s *Server) PullHandler(c *gin.Context) {
 	}
 
 	ch := make(chan any)
-	go func() {
-		defer close(ch)
-		fn := func(r api.ProgressResponse) {
-			ch <- r
-		}
-
-		regOpts := &registryOptions{
-			Insecure: req.Insecure,
-		}
-
-		ctx, cancel := context.WithCancel(c.Request.Context())
-		defer cancel()
-
-		if err := PullModel(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
-			ch <- gin.H{"error": err.Error()}
-		}
-	}()
-
+	go s.pullHandler(c, req, name, ch)
 	if req.Stream != nil && !*req.Stream {
 		waitForStream(c, ch)
 		return
 	}
 
 	streamResponse(c, ch)
+}
+
+func (s *Server) pullHandler(ctx context.Context, req api.PullRequest, name model.Name, ch chan any) {
+	defer close(ch)
+	fn := func(r api.ProgressResponse) {
+		ch <- r
+	}
+
+	regOpts := &registryOptions{
+		Insecure: req.Insecure,
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if err := PullMCP(ctx, name.DisplayShortest(), regOpts, fn); err != nil {
+		ch <- gin.H{"error": err.Error()}
+	}
 }
 
 func isLocalIP(ip netip.Addr) bool {

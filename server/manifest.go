@@ -14,11 +14,23 @@ import (
 	"github.com/macophub/macop/types/model"
 )
 
+type ManifestKind string
+
+const (
+	ManifestKindItem ManifestKind = "application/vnd.docker.distribution.manifest.v2+json"
+	ManifestKindList ManifestKind = "application/vnd.docker.distribution.manifest.list.v2+json"
+)
+
 type Manifest struct {
-	SchemaVersion int     `json:"schemaVersion"`
-	MediaType     string  `json:"mediaType"`
-	Config        Layer   `json:"config"`
-	Layers        []Layer `json:"layers"`
+	SchemaVersion int          `json:"schemaVersion"`
+	MediaType     ManifestKind `json:"mediaType"`
+
+	// MediaType == ManifestKindItem
+	Config Layer   `json:"config,omitempty,omitzero"`
+	Layers []Layer `json:"layers,omitempty,omitzero"`
+
+	// MediaType == ManifestKindList
+	Manifests []Layer `json:"manifests,omitempty,omitzero"`
 
 	filepath string
 	fi       os.FileInfo
@@ -26,10 +38,17 @@ type Manifest struct {
 }
 
 func (m *Manifest) Size() (size int64) {
-	for _, layer := range append(m.Layers, m.Config) {
-		size += layer.Size
+	if m.MediaType == ManifestKindItem {
+		for _, layer := range append(m.Layers, m.Config) {
+			size += layer.Size
+		}
 	}
 
+	if m.MediaType == ManifestKindList {
+		for _, manifest := range m.Manifests {
+			size += manifest.Size
+		}
+	}
 	return
 }
 
@@ -47,16 +66,26 @@ func (m *Manifest) Remove() error {
 }
 
 func (m *Manifest) RemoveLayers() error {
-	for _, layer := range append(m.Layers, m.Config) {
-		if layer.Digest != "" {
-			if err := layer.Remove(); errors.Is(err, os.ErrNotExist) {
-				slog.Debug("layer does not exist", "digest", layer.Digest)
-			} else if err != nil {
-				return err
+	if m.MediaType == ManifestKindItem {
+		for _, layer := range append(m.Layers, m.Config) {
+			if layer.Digest != "" {
+				if err := layer.Remove(); errors.Is(err, os.ErrNotExist) {
+					slog.Debug("layer does not exist", "digest", layer.Digest)
+				} else if err != nil {
+					return err
+				}
 			}
 		}
 	}
 
+	if m.MediaType == ManifestKindList {
+		for _, manifest := range m.Manifests {
+			err := manifest.Remove()
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -96,20 +125,20 @@ func ParseNamedManifest(n model.Name) (*Manifest, error) {
 	return &m, nil
 }
 
-func WriteManifest(name model.Name, config Layer, layers []Layer) error {
+func WriteManifest(name model.Name, config Layer, layers []Layer) (*Manifest, error) {
 	manifests, err := GetManifestPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	p := filepath.Join(manifests, name.Filepath())
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 
 	f, err := os.Create(p)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -120,7 +149,45 @@ func WriteManifest(name model.Name, config Layer, layers []Layer) error {
 		Layers:        layers,
 	}
 
-	return json.NewEncoder(f).Encode(m)
+	return &m, json.NewEncoder(f).Encode(m)
+}
+
+func WriteManifestList(name model.Name, manifests []*Manifest) (*Manifest, error) {
+	manifestListPath, err := GetManifestListPath()
+	if err != nil {
+		return nil, err
+	}
+
+	p := filepath.Join(manifestListPath, name.Filepath())
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return nil, err
+	}
+
+	f, err := os.Create(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	manifestConfigs := make([]Layer, 0, len(manifests))
+	for _, m := range manifests {
+		layer, err := NewManifestLayer(m)
+		if err != nil {
+			return nil, err
+		}
+		manifestConfigs = append(manifestConfigs, *layer)
+	}
+
+	m := Manifest{
+		SchemaVersion: 2,
+		MediaType:     ManifestKindList,
+		Manifests:     manifestConfigs,
+		filepath:      p,
+		fi:            nil,
+		digest:        "",
+	}
+
+	return &m, json.NewEncoder(f).Encode(m)
 }
 
 func Manifests(continueOnError bool) (map[model.Name]*Manifest, error) {

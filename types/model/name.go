@@ -35,7 +35,7 @@ func Unqualified(n Name) error {
 const MissingPart = "!MISSING!"
 
 const (
-	defaultHost      = "registry.ollama.ai"
+	defaultHost      = "registry-1.docker.io"
 	defaultNamespace = "library"
 	defaultTag       = "latest"
 )

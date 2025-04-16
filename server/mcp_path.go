@@ -23,7 +23,7 @@ type MCPPath struct {
 }
 
 const (
-	DefaultRegistry       = "registry.ollama.ai"
+	DefaultRegistry       = "registry-1.docker.io"
 	DefaultNamespace      = "library"
 	DefaultTag            = "latest"
 	DefaultProtocolScheme = "https"
@@ -114,6 +114,15 @@ func (mp MCPPath) BaseURL() *url.URL {
 }
 
 func GetManifestPath() (string, error) {
+	path := filepath.Join(envconfig.Models(), "manifests")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func GetManifestListPath() (string, error) {
 	path := filepath.Join(envconfig.Models(), "manifests")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return "", err

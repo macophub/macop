@@ -50,7 +50,7 @@ func (r registryChallenge) URL() (*url.URL, error) {
 	return redirectURL, nil
 }
 
-func getAuthorizationToken(ctx context.Context, challenge registryChallenge) (string, error) {
+func getAuthorizationToken(ctx context.Context, challenge registryChallenge, regOpts *registryOptions) (string, error) {
 	redirectURL, err := challenge.URL()
 	if err != nil {
 		return "", err
@@ -60,9 +60,16 @@ func getAuthorizationToken(ctx context.Context, challenge registryChallenge) (st
 	data := []byte(fmt.Sprintf("%s,%s,%s", http.MethodGet, redirectURL.String(), base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sha256sum[:])))))
 
 	headers := make(http.Header)
-	signature, err := auth.Sign(ctx, data)
-	if err != nil {
-		return "", err
+	var signature string
+	// 添加基本认证
+	if regOpts.Username != "" && regOpts.Password != "" {
+		auth := regOpts.Username + ":" + regOpts.Password
+		signature = "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+	} else {
+		signature, err = auth.Sign(ctx, data)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	headers.Add("Authorization", signature)

@@ -311,6 +311,28 @@ type CreateRequest struct {
 	Messages   []Message         `json:"messages,omitempty"`
 }
 
+type CreateRequestV2 struct {
+	Name   string `json:"name"`
+	Stream *bool  `json:"stream,omitempty"`
+
+	Os          string
+	Arch        string
+	BinFilePath string
+}
+
+type ELFMeta struct {
+	Os       string `json:"os,omitempty"`
+	Arch     string `json:"arch,omitempty"`
+	FilePath string `json:"file_path,omitempty"`
+}
+
+type CreateRequestV3 struct {
+	Name   string `json:"name"`
+	Stream *bool  `json:"stream,omitempty"`
+
+	ELFMetas []ELFMeta `json:"elf_metas"`
+}
+
 // DeleteRequest is the request passed to [Client.Delete].
 type DeleteRequest struct {
 	Model string `json:"model"`
@@ -359,13 +381,10 @@ type CopyRequest struct {
 // PullRequest is the request passed to [Client.Pull].
 type PullRequest struct {
 	Model    string `json:"model"`
-	Insecure bool   `json:"insecure,omitempty"` // Deprecated: ignored
-	Username string `json:"username"`           // Deprecated: ignored
-	Password string `json:"password"`           // Deprecated: ignored
+	Insecure bool   `json:"insecure,omitempty"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 	Stream   *bool  `json:"stream,omitempty"`
-
-	// Deprecated: set the model name with Model instead
-	Name string `json:"name"`
 }
 
 // ProgressResponse is the response passed to progress functions like
@@ -384,9 +403,6 @@ type PushRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Stream   *bool  `json:"stream,omitempty"`
-
-	// Deprecated: set the model name with Model instead
-	Name string `json:"name"`
 }
 
 // ListResponse is the response from [Client.List].
