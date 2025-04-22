@@ -27,7 +27,6 @@ import (
 	"github.com/macophub/macop/parser"
 	"github.com/macophub/macop/template"
 	"github.com/macophub/macop/types/model"
-	"github.com/macophub/macop/version"
 )
 
 var (
@@ -514,6 +513,26 @@ func PushMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 		return err
 	}
 
+	if mp.ProtocolScheme == "http" && !regOpts.Insecure {
+		return errInsecureProtocol
+	}
+
+	switch manifest.MediaType {
+	case ManifestKindItem:
+		return pushMCP4Item(ctx, mp, manifest, regOpts, fn)
+	case ManifestKindList:
+		return pushMCP4List(ctx, mp, manifest, regOpts, fn)
+
+	}
+
+	return fmt.Errorf("unsupported manifest media type: %s", manifest.MediaType)
+}
+
+func pushMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
+	if manifest.MediaType != ManifestKindItem {
+		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+	}
+
 	var layers []Layer
 	layers = append(layers, manifest.Layers...)
 	if manifest.Config.Digest != "" {
@@ -537,7 +556,7 @@ func PushMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 	}
 
 	headers := make(http.Header)
-	headers.Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+	headers.Set("Content-Type", string(ManifestKindItem))
 	resp, err := makeRequestWithRetry(ctx, http.MethodPut, requestURL, headers, bytes.NewReader(manifestJSON), regOpts)
 	if err != nil {
 		return err
@@ -549,7 +568,67 @@ func PushMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 	return nil
 }
 
-func PullModel(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
+func pushMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
+	if manifest.MediaType != ManifestKindList {
+		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+	}
+
+	var layers []Layer
+	subManifests := make([]*Manifest, 0, len(manifest.Manifests))
+
+	for _, layer := range manifest.Manifests {
+		manifest, err := NewManifestFromLayer(layer)
+		if err != nil {
+			return fmt.Errorf("invalid manifest layer: %s", err)
+		}
+		subManifests = append(subManifests, manifest)
+		if manifest.Config.Digest != "" {
+			layers = append(layers, manifest.Config)
+		}
+		layers = append(layers, manifest.Layers...)
+	}
+
+	for _, layer := range layers {
+		if err := uploadBlob(ctx, mp, layer, regOpts, fn); err != nil {
+			slog.Error(fmt.Sprintf("error uploading blob: %v", err))
+			return err
+		}
+	}
+	for _, subManifest := range subManifests {
+		err := pushSubMCPManifest(ctx, mp, subManifest, regOpts, fn)
+		if err != nil {
+			slog.Error(fmt.Sprintf("error uploading sub manifest: %v", err))
+			return err
+		}
+	}
+
+	fn(api.ProgressResponse{Status: "pushing manifest"})
+	requestURL := mp.BaseURL()
+	requestURL = requestURL.JoinPath("v2", mp.GetNamespaceRepository(), "manifests", mp.Tag)
+
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
+	headers := make(http.Header)
+	headers.Set("Content-Type", string(ManifestKindList))
+	resp, err := makeRequestWithRetry(ctx, http.MethodPut, requestURL, headers, bytes.NewReader(manifestJSON), regOpts)
+	if err != nil {
+		slog.Error("[pushMCP4List][pushManifest][makeRequestWithRetry]", "err", err.Error())
+		return err
+	}
+	defer resp.Body.Close()
+
+	bs, _ := io.ReadAll(resp.Body)
+	slog.Info("push manifest resp", "boby", string(bs))
+
+	fn(api.ProgressResponse{Status: "success"})
+
+	return nil
+}
+
+func PullMCP(ctx context.Context, name string, regOpts *registryOptions, fn func(api.ProgressResponse)) error {
 	mp := ParseMCPPath(name)
 
 	// build deleteMap to prune unused layers
@@ -579,6 +658,28 @@ func PullModel(ctx context.Context, name string, regOpts *registryOptions, fn fu
 		return fmt.Errorf("pull model manifest: %s", err)
 	}
 
+	switch manifest.MediaType {
+	case ManifestKindItem:
+		err = pullMCP4Item(ctx, mp, manifest, regOpts, deleteMap, fn)
+	case ManifestKindList:
+		err = pullMCP4List(ctx, mp, manifest, regOpts, deleteMap, fn)
+	default:
+		return fmt.Errorf("unsupported manifest media type: %s", manifest.MediaType)
+	}
+
+	if !envconfig.NoPrune() && len(deleteMap) > 0 {
+		fn(api.ProgressResponse{Status: "removing unused layers"})
+		if err := deleteUnusedLayers(deleteMap); err != nil {
+			fn(api.ProgressResponse{Status: fmt.Sprintf("couldn't remove unused layers: %v", err)})
+		}
+	}
+	return nil
+}
+
+func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) error {
+	if manifest.MediaType != ManifestKindItem {
+		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+	}
 	var layers []Layer
 	layers = append(layers, manifest.Layers...)
 	if manifest.Config.Digest != "" {
@@ -639,15 +740,58 @@ func PullModel(ctx context.Context, name string, regOpts *registryOptions, fn fu
 
 	err = os.WriteFile(fp, manifestJSON, 0o644)
 	if err != nil {
-		slog.Info(fmt.Sprintf("couldn't write to %s", fp))
+		slog.Error(fmt.Sprintf("couldn't write to %s", fp))
 		return err
 	}
 
-	if !envconfig.NoPrune() && len(deleteMap) > 0 {
-		fn(api.ProgressResponse{Status: "removing unused layers"})
-		if err := deleteUnusedLayers(deleteMap); err != nil {
-			fn(api.ProgressResponse{Status: fmt.Sprintf("couldn't remove unused layers: %v", err)})
+	fn(api.ProgressResponse{Status: "success"})
+
+	return nil
+}
+
+func pullMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) error {
+	if manifest.MediaType != ManifestKindList {
+		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+	}
+	for _, layer := range manifest.Manifests {
+		if layer.Platform.OS != runtime.GOOS ||
+			layer.Platform.Architecture != runtime.GOARCH {
+			slog.Warn("skipping layer for different platform", "layer", layer)
+			continue
 		}
+		manifest, err := pullModelManifest(ctx, MCPPath{
+			ProtocolScheme: mp.ProtocolScheme,
+			Registry:       mp.Registry,
+			Namespace:      mp.Namespace,
+			Repository:     mp.Repository,
+			Tag:            layer.Digest,
+		}, regOpts)
+		if err != nil {
+			return fmt.Errorf("pull mcp manifest: err=%s", err)
+		}
+		err = pullMCP4Item(ctx, mp, manifest, regOpts, deleteMap, fn)
+		if err != nil {
+			return fmt.Errorf("pull mcp manifest: err=%s", err)
+		}
+	}
+
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
+	fp, err := mp.GetManifestPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+		return err
+	}
+
+	err = os.WriteFile(fp, manifestJSON, 0o644)
+	if err != nil {
+		slog.Error(fmt.Sprintf("couldn't write to %s", fp))
+		return err
 	}
 
 	fn(api.ProgressResponse{Status: "success"})
@@ -659,7 +803,8 @@ func pullModelManifest(ctx context.Context, mp MCPPath, regOpts *registryOptions
 	requestURL := mp.BaseURL().JoinPath("v2", mp.GetNamespaceRepository(), "manifests", mp.Tag)
 
 	headers := make(http.Header)
-	headers.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+	headers.Add("Accept", string(ManifestKindItem))
+	headers.Add("Accept", string(ManifestKindList))
 	resp, err := makeRequestWithRetry(ctx, http.MethodGet, requestURL, headers, nil, regOpts)
 	if err != nil {
 		return nil, err
@@ -704,7 +849,7 @@ func makeRequestWithRetry(ctx context.Context, method string, requestURL *url.UR
 
 			// Handle authentication error with one retry
 			challenge := parseRegistryChallenge(resp.Header.Get("www-authenticate"))
-			token, err := getAuthorizationToken(ctx, challenge)
+			token, err := getAuthorizationToken(ctx, challenge, regOpts)
 			if err != nil {
 				return nil, err
 			}
@@ -769,8 +914,6 @@ func makeRequest(ctx context.Context, method string, requestURL *url.URL, header
 			req.SetBasicAuth(regOpts.Username, regOpts.Password)
 		}
 	}
-
-	req.Header.Set("User-Agent", fmt.Sprintf("ollama/%s (%s %s) Go/%s", version.Version, runtime.GOARCH, runtime.GOOS, runtime.Version()))
 
 	if s := req.Header.Get("Content-Length"); s != "" {
 		contentLength, err := strconv.ParseInt(s, 10, 64)
@@ -843,6 +986,29 @@ func verifyBlob(digest string) error {
 	if digest != fileDigest {
 		return fmt.Errorf("%w: want %s, got %s", errDigestMismatch, digest, fileDigest)
 	}
+
+	return nil
+}
+
+func pushSubMCPManifest(ctx context.Context, mp MCPPath, manifest *Manifest, opts *registryOptions, _ func(api.ProgressResponse)) error {
+	requestURL := mp.BaseURL()
+	requestURL = requestURL.JoinPath("v2", mp.GetNamespaceRepository(), "manifests", manifest.digest)
+
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		slog.Error("[pushSubMCPManifest][json.Marshal]", "err", err.Error())
+		return err
+	}
+
+	headers := make(http.Header)
+	headers.Set("Content-Type", string(ManifestKindItem))
+	slog.Info("pushSubMCPManifest", "url", requestURL.String(), "headers", headers, "body", string(manifestJSON), "digest", fmt.Sprintf("%x", sha256.Sum256(manifestJSON)))
+
+	resp, err := makeRequestWithRetry(ctx, http.MethodPut, requestURL, headers, bytes.NewReader(manifestJSON), opts)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
 	return nil
 }

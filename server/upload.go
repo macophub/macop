@@ -43,6 +43,10 @@ type blobUpload struct {
 	references atomic.Int32
 }
 
+func newBlobUpload(layer Layer) *blobUpload {
+	return &blobUpload{Layer: layer}
+}
+
 const (
 	numUploadParts          = 16
 	minUploadPartSize int64 = 100 * format.MegaByte
@@ -278,7 +282,7 @@ func (b *blobUpload) uploadPart(ctx context.Context, method string, requestURL *
 	case resp.StatusCode == http.StatusUnauthorized:
 		w.Rollback()
 		challenge := parseRegistryChallenge(resp.Header.Get("www-authenticate"))
-		token, err := getAuthorizationToken(ctx, challenge)
+		token, err := getAuthorizationToken(ctx, challenge, opts)
 		if err != nil {
 			return err
 		}
@@ -384,7 +388,7 @@ func uploadBlob(ctx context.Context, mp MCPPath, layer Layer, opts *registryOpti
 		return nil
 	}
 
-	data, ok := blobUploadManager.LoadOrStore(layer.Digest, &blobUpload{Layer: layer})
+	data, ok := blobUploadManager.LoadOrStore(layer.Digest, newBlobUpload(layer))
 	upload := data.(*blobUpload)
 	if !ok {
 		requestURL := mp.BaseURL()
