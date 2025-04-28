@@ -22,6 +22,7 @@ import (
 
 	"github.com/macophub/macop/api"
 	"github.com/macophub/macop/envconfig"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -44,8 +45,9 @@ type registryOptions struct {
 }
 
 type ConfigV2 struct {
+	RawConfig []byte `json:"rawConfig"`
 	// macop config
-	MacopConfig MacopConfig `json:"macop_config"`
+	//MacopConfig MacopConfig `json:"macop_config"`
 
 	// required by spec
 	Architecture string `json:"architecture"`
@@ -385,15 +387,59 @@ func PullMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 	if err != nil {
 		return fmt.Errorf("pull model manifest: %s", err)
 	}
-
+	var layers []Layer
 	switch manifest.MediaType {
 	case ManifestKindItem:
-		err = pullMCP4Item(ctx, mp, manifest, regOpts, deleteMap, fn)
+		layers, err = pullMCP4Item(ctx, mp, manifest, regOpts, deleteMap, fn)
 	case ManifestKindList:
-		err = pullMCP4List(ctx, mp, manifest, regOpts, deleteMap, fn)
+		layers, err = pullMCP4List(ctx, mp, manifest, regOpts, deleteMap, fn)
 	default:
 		return fmt.Errorf("unsupported manifest media type: %s", manifest.MediaType)
 	}
+	// todo 优化 layer 写死的
+	configDigest := layers[1].Digest
+	configFp, err := GetBlobsPath(configDigest)
+	if err != nil {
+		return fmt.Errorf("couldn't get file path for '%s': %v", configDigest, err)
+	}
+	readFile, err := os.ReadFile(configFp)
+	if err != nil {
+		return fmt.Errorf("couldn't read file path for '%s': %v", configDigest, err)
+	}
+
+	var configFpData ConfigV2
+	if err := json.Unmarshal(readFile, &configFpData); err != nil {
+		return fmt.Errorf("json unmarshal error: %w", err)
+	}
+
+	var macopYaml MacopConfig
+	err = yaml.Unmarshal(configFpData.RawConfig, &macopYaml)
+	if err != nil {
+		return fmt.Errorf("yaml unmarshal error: %w", err)
+	}
+
+	entrypointDigest := layers[0].Digest
+	entrypointFp, err := GetBlobsPath(entrypointDigest)
+	if err != nil {
+		return fmt.Errorf("couldn't get file path for '%s': %v", entrypointDigest, err)
+	}
+
+	yamlMp := ParseMCPPath(macopYaml.Metadata.Image)
+	runPath, err := yamlMp.GetRunPath()
+	if err != nil {
+		return fmt.Errorf("couldn't get run path for '%s': %v", entrypointDigest, err)
+	}
+	// 根据 macopYaml.spec.entrypoint，将entrypointFp copy 到指定runPath，并将名字改为macopYaml.spec.entrypoint ，给 chmod +x 权限
+	if err := os.MkdirAll(runPath, 0o755); err != nil {
+		return fmt.Errorf("couldn't create directory '%s': %v", runPath, err)
+	}
+	if err := os.Rename(entrypointFp, filepath.Join(runPath, macopYaml.Spec.Entrypoint)); err != nil {
+		return fmt.Errorf("couldn't rename file '%s' to '%s': %v", entrypointFp, filepath.Join(runPath, macopYaml.Spec.Entrypoint), err)
+	}
+	if err := os.Chmod(filepath.Join(runPath, macopYaml.Spec.Entrypoint), 0o755); err != nil {
+		return fmt.Errorf("couldn't change file permission '%s': %v", entrypointFp, err)
+	}
+	slog.Info("Your exec file is " + filepath.Join(runPath, macopYaml.Spec.Entrypoint))
 
 	if !envconfig.NoPrune() && len(deleteMap) > 0 {
 		fn(api.ProgressResponse{Status: "removing unused layers"})
@@ -404,11 +450,10 @@ func PullMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 	return nil
 }
 
-func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) error {
+func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) (layers []Layer, err error) {
 	if manifest.MediaType != ManifestKindItem {
-		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+		return nil, fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
 	}
-	var layers []Layer
 	layers = append(layers, manifest.Layers...)
 	if manifest.Config.Digest != "" {
 		layers = append(layers, manifest.Config)
@@ -423,7 +468,7 @@ func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *
 			fn:      fn,
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		skipVerify[layer.Digest] = cacheHit
 		delete(deleteMap, layer.Digest)
@@ -440,14 +485,14 @@ func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *
 				// something went wrong, delete the blob
 				fp, err := GetBlobsPath(layer.Digest)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if err := os.Remove(fp); err != nil {
 					// log this, but return the original error
 					slog.Info(fmt.Sprintf("couldn't remove file with digest mismatch '%s': %v", fp, err))
 				}
 			}
-			return err
+			return nil, err
 		}
 	}
 
@@ -455,31 +500,31 @@ func pullMCP4Item(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *
 
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	fp, err := mp.GetManifestPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 
 	err = os.WriteFile(fp, manifestJSON, 0o644)
 	if err != nil {
 		slog.Error(fmt.Sprintf("couldn't write to %s", fp))
-		return err
+		return nil, err
 	}
 
 	fn(api.ProgressResponse{Status: "success"})
 
-	return nil
+	return
 }
 
-func pullMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) error {
+func pullMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *registryOptions, deleteMap map[string]struct{}, fn func(api.ProgressResponse)) (layers []Layer, err error) {
 	if manifest.MediaType != ManifestKindList {
-		return fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
+		return nil, fmt.Errorf("invalid manifest media type: %s", manifest.MediaType)
 	}
 	for _, layer := range manifest.Manifests {
 		if layer.Platform.OS != runtime.GOOS ||
@@ -487,7 +532,8 @@ func pullMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *
 			slog.Warn("skipping layer for different platform", "layer", layer)
 			continue
 		}
-		manifest, err := pullModelManifest(ctx, MCPPath{
+		var pullManifest *Manifest
+		pullManifest, err = pullModelManifest(ctx, MCPPath{
 			ProtocolScheme: mp.ProtocolScheme,
 			Registry:       mp.Registry,
 			Namespace:      mp.Namespace,
@@ -495,36 +541,36 @@ func pullMCP4List(ctx context.Context, mp MCPPath, manifest *Manifest, regOpts *
 			Tag:            layer.Digest,
 		}, regOpts)
 		if err != nil {
-			return fmt.Errorf("pull mcp manifest: err=%s", err)
+			return nil, fmt.Errorf("pull mcp pullManifest: err=%s", err)
 		}
-		err = pullMCP4Item(ctx, mp, manifest, regOpts, deleteMap, fn)
+		// Download
+		layers, err = pullMCP4Item(ctx, mp, pullManifest, regOpts, deleteMap, fn)
 		if err != nil {
-			return fmt.Errorf("pull mcp manifest: err=%s", err)
+			return nil, fmt.Errorf("pull mcp pullManifest: err=%s", err)
 		}
 	}
 
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	fp, err := mp.GetManifestPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
-		return err
+		return nil, err
 	}
-
 	err = os.WriteFile(fp, manifestJSON, 0o644)
 	if err != nil {
 		slog.Error(fmt.Sprintf("couldn't write to %s", fp))
-		return err
+		return nil, err
 	}
 
 	fn(api.ProgressResponse{Status: "success"})
 
-	return nil
+	return
 }
 
 func pullModelManifest(ctx context.Context, mp MCPPath, regOpts *registryOptions) (*Manifest, error) {

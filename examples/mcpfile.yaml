@@ -1,0 +1,24 @@
+version: '1' # 打包格式版本
+metadata:
+#  mcpType: go # mcp 软件类型
+  image: clickvisual/macop:v1.8 # 镜像名称
+spec:
+  entrypoint: macop # 入口文件
+#  cmd: [ "--config=test.toml" ] # 命令行参数
+#  files:
+#    copy: # 需要复制的文件
+#      - src: config
+#        dst: config
+  builds: # 构建清单
+    - architecture: amd64 # CPU架构
+      os: linux # 操作系统
+#      buildCMD: test-amd64 # 构建命令
+      binFilepath: yourfile # 二进制文件路径
+    - architecture: arm64 # CPU架构
+      os: linux # 操作系统
+#      buildCMD: test-arm64 # 构建命令
+      binFilepath: yourfile # 二进制文件路径
+    - architecture: arm64 # CPU架构
+      os: darwin # 操作系统
+#      buildCMD: test-arm64 # 构建命令
+      binFilepath: yourfile # 二进制文件路径

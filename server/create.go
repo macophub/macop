@@ -48,7 +48,7 @@ func (s *Server) CreateHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errFilePath.Error()})
 		return
 	}
-	name := model.ParseName(r.Name)
+	name := model.ParseImageName(r.Name)
 	if !name.IsValid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errtypes.InvalidModelNameErrMsg})
 		return

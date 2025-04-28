@@ -102,7 +102,21 @@ func (mp MCPPath) GetManifestPath() (string, error) {
 	if !name.IsValid() {
 		return "", fs.ErrNotExist
 	}
-	return filepath.Join(envconfig.Models(), "manifests", name.Filepath()), nil
+	return filepath.Join(envconfig.McpPath(), "manifests", name.Filepath()), nil
+}
+
+// GetRunPath returns the path to the manifest file for the given model path, it is up to the caller to create the directory if it does not exist.
+func (mp MCPPath) GetRunPath() (string, error) {
+	name := Name{
+		Host:      mp.Registry,
+		Namespace: mp.Namespace,
+		Model:     mp.Repository,
+		Tag:       mp.Tag,
+	}
+	if !name.IsValid() {
+		return "", fs.ErrNotExist
+	}
+	return filepath.Join(envconfig.McpPath(), "run", name.Filepath()), nil
 }
 
 func (mp MCPPath) BaseURL() *url.URL {
@@ -113,7 +127,7 @@ func (mp MCPPath) BaseURL() *url.URL {
 }
 
 func GetManifestPath() (string, error) {
-	path := filepath.Join(envconfig.Models(), "manifests")
+	path := filepath.Join(envconfig.McpPath(), "manifests")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return "", err
 	}
@@ -122,7 +136,7 @@ func GetManifestPath() (string, error) {
 }
 
 func GetManifestListPath() (string, error) {
-	path := filepath.Join(envconfig.Models(), "manifests")
+	path := filepath.Join(envconfig.McpPath(), "manifests")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return "", err
 	}
@@ -140,7 +154,7 @@ func GetBlobsPath(digest string) (string, error) {
 	}
 
 	digest = strings.ReplaceAll(digest, ":", "-")
-	path := filepath.Join(envconfig.Models(), "blobs", digest)
+	path := filepath.Join(envconfig.McpPath(), "blobs", digest)
 	dirPath := filepath.Dir(path)
 	if digest == "" {
 		dirPath = path

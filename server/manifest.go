@@ -100,7 +100,6 @@ func ParseNamedManifest(n model.Name) (*Manifest, error) {
 	}
 
 	p := filepath.Join(manifests, n.Filepath())
-
 	var m Manifest
 	f, err := os.Open(p)
 	if err != nil {

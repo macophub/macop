@@ -93,7 +93,7 @@ type Name struct {
 	Tag       string
 }
 
-// ParseName parses and assembles a Name from a name string. The
+// ParseImageName parses and assembles a Name from a name string. The
 // format of a valid name string is:
 //
 //	  s:
@@ -126,13 +126,13 @@ type Name struct {
 //	      pattern: { alphanum | "_" } { alphanum | "-" | ":" }*
 //	      length:  [1, 80]
 //
-// Most users should use [ParseName] instead, unless need to support
+// Most users should use [ParseImageName] instead, unless need to support
 // different defaults than DefaultName.
 //
 // The name returned is not guaranteed to be valid. If it is not valid, the
 // field values are left in an undefined state. Use [Name.IsValid] to check
 // if the name is valid.
-func ParseName(s string) Name {
+func ParseImageName(s string) Name {
 	return Merge(ParseNameBare(s), DefaultName())
 }
 

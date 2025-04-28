@@ -79,10 +79,10 @@ func AllowedOrigins() (origins []string) {
 	return origins
 }
 
-// Models returns the path to the models directory. Models directory can be configured via the OLLAMA_MODELS environment variable.
-// Default is $HOME/.ollama/models
-func Models() string {
-	if s := Var("OLLAMA_MODELS"); s != "" {
+// McpPath returns the path to the models directory. McpPath directory can be configured via the MACOP_MCPS environment variable.
+// Default is $HOME/.macop/mcps
+func McpPath() string {
+	if s := Var("MACOP_MCPS"); s != "" {
 		return s
 	}
 
@@ -91,7 +91,7 @@ func Models() string {
 		panic(err)
 	}
 
-	return filepath.Join(home, ".macop", "mcp_servers")
+	return filepath.Join(home, ".macop", "mcps")
 }
 
 // KeepAlive returns the duration that models stay loaded in memory. KeepAlive can be configured via the OLLAMA_KEEP_ALIVE environment variable.
@@ -248,7 +248,7 @@ func AsMap() map[string]EnvVar {
 		"OLLAMA_LOAD_TIMEOUT":      {"OLLAMA_LOAD_TIMEOUT", LoadTimeout(), "How long to allow model loads to stall before giving up (default \"5m\")"},
 		"OLLAMA_MAX_LOADED_MODELS": {"OLLAMA_MAX_LOADED_MODELS", MaxRunners(), "Maximum number of loaded models per GPU"},
 		"OLLAMA_MAX_QUEUE":         {"OLLAMA_MAX_QUEUE", MaxQueue(), "Maximum number of queued requests"},
-		"OLLAMA_MODELS":            {"OLLAMA_MODELS", Models(), "The path to the models directory"},
+		"OLLAMA_MODELS":            {"OLLAMA_MODELS", McpPath(), "The path to the models directory"},
 		"OLLAMA_NOHISTORY":         {"OLLAMA_NOHISTORY", NoHistory(), "Do not preserve readline history"},
 		"OLLAMA_NOPRUNE":           {"OLLAMA_NOPRUNE", NoPrune(), "Do not prune model blobs on startup"},
 		"OLLAMA_NUM_PARALLEL":      {"OLLAMA_NUM_PARALLEL", NumParallel(), "Maximum number of parallel requests"},
