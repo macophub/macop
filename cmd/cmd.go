@@ -1,12 +1,10 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"runtime"
 
-	"github.com/macophub/macop/envconfig"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -22,7 +20,7 @@ func NewCLI() *cobra.Command {
 
 	rootCmd := &cobra.Command{
 		Use:           "macop",
-		Short:         "Model context protocol runner",
+		Short:         "Model agent context operation platform",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		CompletionOptions: cobra.CompletionOptions{
@@ -39,82 +37,37 @@ func NewCLI() *cobra.Command {
 	}
 	rootCmd.Flags().BoolP("version", "v", false, "Show version information")
 
-	//listCmd := &cobra.Command{
-	//	Use:     "list",
-	//	Aliases: []string{"ls"},
-	//	Short:   "List MCP",
-	//	PreRunE: checkServerHeartbeat,
-	//	RunE:    ListHandler,
-	//}
-
-	serveCmd := &cobra.Command{
-		Use:     "serve",
-		Aliases: []string{"start"},
-		Short:   "Start macop",
-		Args:    cobra.ExactArgs(0),
-		RunE:    RunServer,
+	createCmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a mcp from a Mcpfile",
+		RunE:  CreateHandler,
 	}
+	createCmd.Flags().StringP("file", "f", "", "Name of the Mcpfile (default \"Mcpfile\"")
 
-	//pullCmd := &cobra.Command{
-	//	Use:     "pull MCP",
-	//	Short:   "Pull a mcp from a registry",
-	//	Args:    cobra.ExactArgs(1),
-	//	PreRunE: checkServerHeartbeat,
-	//	RunE:    PullHandler,
-	//}
-
-	//pullCmd.Flags().Bool("insecure", false, "Use an insecure registry")
-
-	envVars := envconfig.AsMap()
-	envs := []envconfig.EnvVar{envVars["MACOP_HOST"]}
-
-	for _, cmd := range []*cobra.Command{
-		//pullCmd,
-		serveCmd,
-	} {
-		switch cmd {
-		case serveCmd:
-			appendEnvDocs(cmd, []envconfig.EnvVar{
-				envVars["MACOP_DEBUG"],
-				envVars["MACOP_HOST"],
-				envVars["MACOP_KEEP_ALIVE"],
-				envVars["MACOP_MAX_LOADED_MCPS"],
-				envVars["MACOP_MAX_QUEUE"],
-				envVars["MACOP_MCPS"],
-				envVars["MACOP_NUM_PARALLEL"],
-				envVars["MACOP_NOPRUNE"],
-				envVars["MACOP_ORIGINS"],
-				envVars["MACOP_SCHED_SPREAD"],
-				envVars["MACOP_TMPDIR"],
-				envVars["MACOP_FLASH_ATTENTION"],
-				envVars["MACOP_KV_CACHE_TYPE"],
-				envVars["MACOP_LLM_LIBRARY"],
-				envVars["MACOP_GPU_OVERHEAD"],
-				envVars["MACOP_LOAD_TIMEOUT"],
-			})
-		default:
-			appendEnvDocs(cmd, envs)
-		}
+	pushCmd := &cobra.Command{
+		Use:   "push",
+		Short: "push a mcp",
+		RunE:  PushHandler,
 	}
+	pushCmd.Flags().StringP("image", "i", "", "Image")
+	pushCmd.Flags().BoolP("insecure", "n", false, "insecure")
+	pushCmd.Flags().StringP("username", "u", "", "username")
+	pushCmd.Flags().StringP("password", "p", "", "password")
+
+	pullCmd := &cobra.Command{
+		Use:   "pull",
+		Short: "pull a mcp",
+		RunE:  PullHandler,
+	}
+	pullCmd.Flags().StringP("image", "i", "", "Image")
+	pullCmd.Flags().BoolP("insecure", "n", false, "insecure")
+	pullCmd.Flags().StringP("username", "u", "", "username")
+	pullCmd.Flags().StringP("password", "p", "", "password")
 
 	rootCmd.AddCommand(
-		serveCmd,
-		//pullCmd,
+		createCmd,
+		pushCmd,
+		pullCmd,
 	)
 	return rootCmd
-}
-
-func appendEnvDocs(cmd *cobra.Command, envs []envconfig.EnvVar) {
-	if len(envs) == 0 {
-		return
-	}
-
-	envUsage := `
-Environment Variables:
-`
-	for _, e := range envs {
-		envUsage += fmt.Sprintf("      %-24s   %s\n", e.Name, e.Description)
-	}
-
-	cmd.SetUsageTemplate(cmd.UsageTemplate() + envUsage)
 }

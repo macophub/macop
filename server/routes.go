@@ -293,7 +293,7 @@ func (s *Server) pushHandler(ctx context.Context, req api.PushRequest, ch chan a
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	name, err := getExistingName(model.ParseName(mname))
+	name, err := getExistingName(model.ParseImageName(mname))
 	if err != nil {
 		ch <- gin.H{"error": err.Error()}
 		return
@@ -320,7 +320,7 @@ func (s *Server) PullHandler(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "model is required"})
 		return
 	}
-	name := model.ParseName(req.Model)
+	name := model.ParseImageName(req.Model)
 	if !name.IsValid() {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": errtypes.InvalidModelNameErrMsg})
 		return

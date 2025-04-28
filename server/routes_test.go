@@ -87,7 +87,7 @@ func TestServer_pullHandler(t *testing.T) {
 					Password: "xxxx",
 					Stream:   nil,
 				},
-				name: model.ParseName("ccheers/cctest:v1.7"),
+				name: model.ParseImageName("ccheers/cctest:v1.7"),
 				ch:   make(chan any, 1024),
 			},
 		},

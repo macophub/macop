@@ -1,4 +1,4 @@
-package server
+package core
 
 import (
 	"crypto/sha256"
@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-
-	"github.com/macophub/macop/types/model"
 )
 
 type ManifestKind string
@@ -89,9 +87,9 @@ func (m *Manifest) RemoveLayers() error {
 	return nil
 }
 
-func ParseNamedManifest(n model.Name) (*Manifest, error) {
+func ParseNamedManifest(n Name) (*Manifest, error) {
 	if !n.IsFullyQualified() {
-		return nil, model.Unqualified(n)
+		return nil, Unqualified(n)
 	}
 
 	manifests, err := GetManifestPath()
@@ -100,6 +98,7 @@ func ParseNamedManifest(n model.Name) (*Manifest, error) {
 	}
 
 	p := filepath.Join(manifests, n.Filepath())
+
 	var m Manifest
 	f, err := os.Open(p)
 	if err != nil {
@@ -124,7 +123,7 @@ func ParseNamedManifest(n model.Name) (*Manifest, error) {
 	return &m, nil
 }
 
-func WriteManifest(name model.Name, config Layer, layers []Layer) (*Manifest, error) {
+func WriteManifest(name Name, config Layer, layers []Layer) (*Manifest, error) {
 	manifests, err := GetManifestPath()
 	if err != nil {
 		return nil, err
@@ -151,7 +150,7 @@ func WriteManifest(name model.Name, config Layer, layers []Layer) (*Manifest, er
 	return &m, json.NewEncoder(f).Encode(m)
 }
 
-func WriteManifestList(name model.Name, manifests []*Manifest) (*Manifest, error) {
+func WriteManifestList(name Name, manifests []*Manifest) (*Manifest, error) {
 	manifestListPath, err := GetManifestListPath()
 	if err != nil {
 		return nil, err
@@ -189,7 +188,7 @@ func WriteManifestList(name model.Name, manifests []*Manifest) (*Manifest, error
 	return &m, json.NewEncoder(f).Encode(m)
 }
 
-func Manifests(continueOnError bool) (map[model.Name]*Manifest, error) {
+func Manifests(continueOnError bool) (map[Name]*Manifest, error) {
 	manifests, err := GetManifestPath()
 	if err != nil {
 		return nil, err
@@ -201,7 +200,7 @@ func Manifests(continueOnError bool) (map[model.Name]*Manifest, error) {
 		return nil, err
 	}
 
-	ms := make(map[model.Name]*Manifest)
+	ms := make(map[Name]*Manifest)
 	for _, match := range matches {
 		fi, err := os.Stat(match)
 		if err != nil {
@@ -218,7 +217,7 @@ func Manifests(continueOnError bool) (map[model.Name]*Manifest, error) {
 				continue
 			}
 
-			n := model.ParseNameFromFilepath(rel)
+			n := ParseNameFromFilepath(rel)
 			if !n.IsValid() {
 				if !continueOnError {
 					return nil, fmt.Errorf("%s %w", rel, err)

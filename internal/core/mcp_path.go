@@ -1,4 +1,4 @@
-package server
+package core
 
 import (
 	"errors"
@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/macophub/macop/envconfig"
-	"github.com/macophub/macop/types/model"
 )
 
 type MCPPath struct {
@@ -94,7 +93,7 @@ func (mp MCPPath) GetShortTagname() string {
 
 // GetManifestPath returns the path to the manifest file for the given model path, it is up to the caller to create the directory if it does not exist.
 func (mp MCPPath) GetManifestPath() (string, error) {
-	name := model.Name{
+	name := Name{
 		Host:      mp.Registry,
 		Namespace: mp.Namespace,
 		Model:     mp.Repository,
@@ -104,6 +103,20 @@ func (mp MCPPath) GetManifestPath() (string, error) {
 		return "", fs.ErrNotExist
 	}
 	return filepath.Join(envconfig.McpPath(), "manifests", name.Filepath()), nil
+}
+
+// GetRunPath returns the path to the manifest file for the given model path, it is up to the caller to create the directory if it does not exist.
+func (mp MCPPath) GetRunPath() (string, error) {
+	name := Name{
+		Host:      mp.Registry,
+		Namespace: mp.Namespace,
+		Model:     mp.Repository,
+		Tag:       mp.Tag,
+	}
+	if !name.IsValid() {
+		return "", fs.ErrNotExist
+	}
+	return filepath.Join(envconfig.McpPath(), "run", name.Filepath()), nil
 }
 
 func (mp MCPPath) BaseURL() *url.URL {

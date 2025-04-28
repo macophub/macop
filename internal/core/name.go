@@ -1,6 +1,6 @@
 // Package model contains types and utilities for parsing, validating, and
 // working with model names and digests.
-package model
+package core
 
 import (
 	"cmp"
