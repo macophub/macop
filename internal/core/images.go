@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/macophub/macop/api"
-	"github.com/macophub/macop/envconfig"
 	"gopkg.in/yaml.v3"
 )
 
@@ -441,12 +440,12 @@ func PullMCP(ctx context.Context, name string, regOpts *registryOptions, fn func
 	}
 	slog.Info("Your exec file is " + filepath.Join(runPath, macopYaml.Spec.Entrypoint))
 
-	if !envconfig.NoPrune() && len(deleteMap) > 0 {
-		fn(api.ProgressResponse{Status: "removing unused layers"})
-		if err := deleteUnusedLayers(deleteMap); err != nil {
-			fn(api.ProgressResponse{Status: fmt.Sprintf("couldn't remove unused layers: %v", err)})
-		}
-	}
+	//if !envconfig.NoPrune() && len(deleteMap) > 0 {
+	//	fn(api.ProgressResponse{Status: "removing unused layers"})
+	//	if err := deleteUnusedLayers(deleteMap); err != nil {
+	//		fn(api.ProgressResponse{Status: fmt.Sprintf("couldn't remove unused layers: %v", err)})
+	//	}
+	//}
 	return nil
 }
 

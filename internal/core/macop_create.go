@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/macophub/macop/api"
-	"github.com/macophub/macop/envconfig"
 )
 
 var (
@@ -26,7 +25,7 @@ func (m *Macop) Create(ctx context.Context, ch chan any) error {
 		ch <- resp
 	}
 	imageName := ParseImageName(m.config.Metadata.Image)
-	oldManifest, _ := ParseNamedManifest(imageName)
+	//oldManifest, _ := ParseNamedManifest(imageName)
 	//if err != nil {
 	//	return fmt.Errorf("failed to parse image name: err=%w", err)
 	//}
@@ -65,11 +64,11 @@ func (m *Macop) Create(ctx context.Context, ch chan any) error {
 		return fmt.Errorf("err")
 	}
 
-	if !envconfig.NoPrune() && oldManifest != nil {
-		if err := oldManifest.RemoveLayers(); err != nil {
-			ch <- gin.H{"error": err.Error()}
-		}
-	}
+	//if !envconfig.NoPrune() && oldManifest != nil {
+	//	if err := oldManifest.RemoveLayers(); err != nil {
+	//		ch <- gin.H{"error": err.Error()}
+	//	}
+	//}
 	return nil
 }
 
