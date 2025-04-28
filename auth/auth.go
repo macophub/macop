@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -25,28 +24,6 @@ func keyPath() (string, error) {
 	}
 
 	return filepath.Join(home, ".ollama", defaultPrivateKey), nil
-}
-
-func GetPublicKey() (string, error) {
-	keyPath, err := keyPath()
-	if err != nil {
-		return "", err
-	}
-
-	privateKeyFile, err := os.ReadFile(keyPath)
-	if err != nil {
-		slog.Info(fmt.Sprintf("Failed to load private key: %v", err))
-		return "", err
-	}
-
-	privateKey, err := ssh.ParsePrivateKey(privateKeyFile)
-	if err != nil {
-		return "", err
-	}
-
-	publicKey := ssh.MarshalAuthorizedKey(privateKey.PublicKey())
-
-	return strings.TrimSpace(string(publicKey)), nil
 }
 
 func NewNonce(r io.Reader, length int) (string, error) {
